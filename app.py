@@ -1,6 +1,7 @@
 from flask import Flask, request, send_file, render_template, redirect, url_for
 import os
 import pandas as pd
+from openpyxl import load_workbook
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 
@@ -8,7 +9,7 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/'
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx', 'xls'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx'}
 
 @app.route('/', methods=['GET'])
 def index():
@@ -26,28 +27,40 @@ def upload_file():
         column_name = request.form['column_name']
         match_value = request.form['match_value']
 
-        if file.filename == '':
+        if file.filename == '' or not allowed_file(file.filename):
             return redirect(request.url)
 
-        if file and allowed_file(file.filename):
-            filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
-            file.save(filename)
+        filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
+        file.save(filename)
 
-            df = pd.read_excel(filename, engine='openpyxl')
+        # Open the workbook and the first sheet
+        wb = load_workbook(filename=filename)
+        sheet = wb.active
 
-            if column_name not in df.columns:
-                return f"The column '{column_name}' does not exist in the Excel file.", 400
+        # Create a DataFrame from the Excel file
+        df = pd.read_excel(filename, engine='openpyxl')
 
-            matched_df = df[df[column_name].astype(str).str.strip() == match_value.strip()]
+        # Check if the column exists
+        if column_name not in df.columns:
+            return f"The column '{column_name}' does not exist in the Excel file.", 400
 
-            rdg_content = generate_rdg(matched_df, group_name)
-            processed_filename = f"processed_{file.filename.rsplit('.', 1)[0]}.rdg"
-            processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], processed_filename)
+        # Look for hyperlinks in the specified column and replace the text with the actual URL
+        if 'Secret Server URL' in df.columns:
+            for row in sheet.iter_rows(min_row=2, max_col=sheet.max_column):
+                cell = row[df.columns.get_loc('Secret Server URL')]
+                if cell.hyperlink:
+                    df.at[cell.row - 1, 'Secret Server URL'] = cell.hyperlink.target
 
-            with open(processed_filepath, 'w') as rdg_file:
-                rdg_file.write(rdg_content)
+        matched_df = df[df[column_name].astype(str).str.strip() == match_value.strip()]
 
-            return redirect(url_for('download_file', filename=processed_filename))
+        rdg_content = generate_rdg(matched_df, group_name)
+        processed_filename = f"processed_{file.filename.rsplit('.', 1)[0]}.rdg"
+        processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], processed_filename)
+
+        with open(processed_filepath, 'w') as rdg_file:
+            rdg_file.write(rdg_content)
+
+        return redirect(url_for('download_file', filename=processed_filename))
 
     return 'File upload error'
 
@@ -71,8 +84,13 @@ def generate_rdg(df, group_name):
         ET.SubElement(properties_node, 'displayName').text = str(row['FQDN'])
         ET.SubElement(properties_node, 'name').text = str(row['IP Address'])
         comment_text = f"Configuration Item :{row['Configuration Item Name']}"
-        if 'Secret Server' in df.columns and pd.notnull(row['Secret Server']):
-            comment_text += f"\nSS URL:{row['Secret Server']}"
+
+        if 'Secret Server URL' in df.columns and pd.notnull(row['Secret Server URL']):
+            secret_url = row['Secret Server URL']
+        else:
+            secret_url = "URL Not Available"
+
+        comment_text += f"\nSS URL:{secret_url}"
         ET.SubElement(properties_node, 'comment').text = comment_text
 
     return prettify_xml(root)
@@ -81,13 +99,13 @@ def generate_rdg(df, group_name):
 def download_file(filename):
     download_folder = app.config['UPLOAD_FOLDER']
     file_path = os.path.join(download_folder, filename)
-
+    
     if not os.path.isfile(file_path):
         return "File not found.", 404
 
     response = send_file(file_path, as_attachment=True, download_name=filename)
     os.remove(file_path)
-
+    
     return response
 
 if __name__ == '__main__':
