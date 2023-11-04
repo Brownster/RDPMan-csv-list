@@ -65,8 +65,11 @@
     <div class="container">
         <h1>CSV Match & Download</h1>
         <form action="/upload" method="post" enctype="multipart/form-data">
-            <label for="match_key">Match Key:</label>
-            <input type="text" id="match_key" name="match_key" required>
+            <label for="column_name">Column Name:</label>
+            <input type="text" id="column_name" name="column_name" required>
+
+            <label for="match_value">Match Value:</label>
+            <input type="text" id="match_value" name="match_value" required>
 
             <label for="file">CSV File:</label>
             <input type="file" id="file" name="file" required>

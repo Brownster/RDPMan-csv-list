@@ -18,21 +18,27 @@ def upload_file():
             return redirect(request.url)
         
         file = request.files['file']
-        match_key = request.form['match_key']
+        column_name = request.form['column_name']
+        match_value = request.form['match_value']
         
         # If the user does not select a file, the browser submits an
         # empty file without a filename.
         if file.filename == '':
             return redirect(request.url)
         
-        if file and match_key:
+        if file and column_name and match_value:
             filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(filename)
             
             # Process the CSV
             df = pd.read_csv(filename)
-            # Assuming the CSV has a column named as the match_key
-            matched_df = df[df[match_key].notna()]
+            
+            # Check if the column name exists in the DataFrame
+            if column_name not in df.columns:
+                return f"The column '{column_name}' does not exist in the CSV file.", 400
+            
+            # Filter rows where the specified column has the provided match value
+            matched_df = df[df[column_name].astype(str).str.strip() == match_value.strip()]
             
             # Save the processed CSV
             processed_filename = f"processed_{file.filename}"
