@@ -8,7 +8,7 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/'
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx'}
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx', 'xls'}
 
 @app.route('/', methods=['GET'])
 def index():
@@ -20,26 +20,33 @@ def upload_file():
     if request.method == 'POST':
         if 'file' not in request.files:
             return redirect(request.url)
-        
+
         file = request.files['file']
         group_name = request.form['group_name']
-        
+        column_name = request.form['column_name']
+        match_value = request.form['match_value']
+
         if file.filename == '':
             return redirect(request.url)
-        
-        if file and allowed_file(file.filename) and group_name:
+
+        if file and allowed_file(file.filename):
             filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(filename)
-            
+
             df = pd.read_excel(filename, engine='openpyxl')
-            
-            rdg_content = generate_rdg(df, group_name)
-            processed_filename = f"processed_{file.filename}.rdg"
+
+            if column_name not in df.columns:
+                return f"The column '{column_name}' does not exist in the Excel file.", 400
+
+            matched_df = df[df[column_name].astype(str).str.strip() == match_value.strip()]
+
+            rdg_content = generate_rdg(matched_df, group_name)
+            processed_filename = f"processed_{file.filename.rsplit('.', 1)[0]}.rdg"
             processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], processed_filename)
-            
+
             with open(processed_filepath, 'w') as rdg_file:
                 rdg_file.write(rdg_content)
-            
+
             return redirect(url_for('download_file', filename=processed_filename))
 
     return 'File upload error'
@@ -74,13 +81,13 @@ def generate_rdg(df, group_name):
 def download_file(filename):
     download_folder = app.config['UPLOAD_FOLDER']
     file_path = os.path.join(download_folder, filename)
-    
+
     if not os.path.isfile(file_path):
         return "File not found.", 404
 
     response = send_file(file_path, as_attachment=True, download_name=filename)
     os.remove(file_path)
-    
+
     return response
 
 if __name__ == '__main__':
