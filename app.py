@@ -67,8 +67,8 @@ def generate_rdg(df, group_name):
         ET.SubElement(properties_node, 'displayName').text = row['FQDN']
         ET.SubElement(properties_node, 'name').text = row['IP Address']
         comment_text = f"Configuration Item :{row['Configuration Item Name']}"
-        if 'Secret Server URL' in row and pd.notnull(row['Secret Server URL']):
-            comment_text += f"\nSS URL:{row['Secret Server URL']}"
+        if 'Secret Server' in row and pd.notnull(row['Secret Server']):
+            comment_text += f"\nSS URL:{row['Secret Server']}"
         ET.SubElement(properties_node, 'comment').text = comment_text
 
     return prettify_xml(root)
