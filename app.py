@@ -7,6 +7,9 @@ from xml.dom import minidom
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = '/tmp/'
 
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx'}
+
 @app.route('/', methods=['GET'])
 def index():
     # Render the HTML page for file upload
@@ -19,24 +22,18 @@ def upload_file():
             return redirect(request.url)
         
         file = request.files['file']
-        column_name = request.form['column_name']
-        match_value = request.form['match_value']
         group_name = request.form['group_name']
         
         if file.filename == '':
             return redirect(request.url)
         
-        if file and column_name and match_value and group_name:
+        if file and allowed_file(file.filename) and group_name:
             filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(filename)
             
-            df = pd.read_csv(filename)
-            if column_name not in df.columns:
-                return f"The column '{column_name}' does not exist in the CSV file.", 400
+            df = pd.read_excel(filename, engine='openpyxl')
             
-            matched_df = df[df[column_name].astype(str).str.strip() == match_value.strip()]
-
-            rdg_content = generate_rdg(matched_df, group_name)
+            rdg_content = generate_rdg(df, group_name)
             processed_filename = f"processed_{file.filename}.rdg"
             processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], processed_filename)
             
@@ -64,10 +61,10 @@ def generate_rdg(df, group_name):
     for index, row in df.iterrows():
         server_node = ET.SubElement(group_node, 'server')
         properties_node = ET.SubElement(server_node, 'properties')
-        ET.SubElement(properties_node, 'displayName').text = row['FQDN']
-        ET.SubElement(properties_node, 'name').text = row['IP Address']
+        ET.SubElement(properties_node, 'displayName').text = str(row['FQDN'])
+        ET.SubElement(properties_node, 'name').text = str(row['IP Address'])
         comment_text = f"Configuration Item :{row['Configuration Item Name']}"
-        if 'Secret Server' in row and pd.notnull(row['Secret Server']):
+        if 'Secret Server' in df.columns and pd.notnull(row['Secret Server']):
             comment_text += f"\nSS URL:{row['Secret Server']}"
         ET.SubElement(properties_node, 'comment').text = comment_text
 
