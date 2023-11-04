@@ -1,4 +1,4 @@
-from flask import Flask, request, send_from_directory, render_template, redirect, url_for
+from flask import Flask, request, send_file, render_template, redirect, url_for
 import os
 import pandas as pd
 
@@ -54,12 +54,16 @@ def upload_file():
 def download_file(filename):
     # Set the download path
     download_folder = app.config['UPLOAD_FOLDER']
+    file_path = os.path.join(download_folder, filename)
     
+    # Check if file exists
+    if not os.path.isfile(file_path):
+        return "File not found.", 404
+
     # Trigger the download
-    response = send_from_directory(directory=download_folder, filename=filename, as_attachment=True)
+    response = send_file(file_path, as_attachment=True, download_name=filename)
     
-    # Remove the file after download
-    os.remove(os.path.join(download_folder, filename))
+    os.remove(file_path)
     
     return response
 
