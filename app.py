@@ -24,8 +24,6 @@ def upload_file():
 
         file = request.files['file']
         group_name = request.form['group_name']
-        column_name = request.form['column_name']
-        match_value = request.form['match_value']
 
         if file.filename == '' or not allowed_file(file.filename):
             return redirect(request.url)
@@ -33,27 +31,24 @@ def upload_file():
         filename = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(filename)
 
-        # Open the workbook and the first sheet
         wb = load_workbook(filename=filename)
         sheet = wb.active
-
-        # Create a DataFrame from the Excel file
         df = pd.read_excel(filename, engine='openpyxl')
 
-        # Check if the column exists
-        if column_name not in df.columns:
-            return f"The column '{column_name}' does not exist in the Excel file.", 400
+        if 'exporter_name_os' not in df.columns:
+            return "The column 'exporter_name_os' does not exist in the Excel file.", 400
 
-        # Look for hyperlinks in the specified column and replace the text with the actual URL
+        # Filtering logic
+        filter_values = ['exporter_windows', 'exporter_verint']
+        filtered_df = df[df['exporter_name_os'].isin(filter_values)]
+
         if 'Secret Server URL' in df.columns:
             for row in sheet.iter_rows(min_row=2, max_col=sheet.max_column):
                 cell = row[df.columns.get_loc('Secret Server URL')]
                 if cell.hyperlink:
-                    df.at[cell.row - 1, 'Secret Server URL'] = cell.hyperlink.target
+                    filtered_df.at[cell.row - 1, 'Secret Server URL'] = cell.hyperlink.target
 
-        matched_df = df[df[column_name].astype(str).str.strip() == match_value.strip()]
-
-        rdg_content = generate_rdg(matched_df, group_name)
+        rdg_content = generate_rdg(filtered_df, group_name)
         processed_filename = f"processed_{file.filename.rsplit('.', 1)[0]}.rdg"
         processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], processed_filename)
 
@@ -63,6 +58,7 @@ def upload_file():
         return redirect(url_for('download_file', filename=processed_filename))
 
     return 'File upload error'
+
 
 def prettify_xml(element):
     """Return a pretty-printed XML string for the Element."""
